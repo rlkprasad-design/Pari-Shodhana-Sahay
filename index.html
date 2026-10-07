@@ -406,6 +406,27 @@ async function restoreLists(){
   }
   annotateAll(); render();
 }
+async function autoLoadLists(){
+  for (const which of ['sjr','abdc']) {
+    try {
+      const fname = which === 'sjr' ? 'sjr.csv' : 'abdc.csv';
+      const txt = await fetch(fname).then(r => r.text());
+      const rows = Papa.parse(txt, {skipEmptyLines:true}).data;
+      let entries;
+      if (which === 'sjr') {
+        entries = parseSJR(rows);
+      } else {
+        const r = parseABDC(rows);
+        entries = r.entries;
+      }
+      const info = { count: entries.length, file: fname + ' (built-in)', at: Date.now() };
+      state[which] = buildIndex(entries);
+      setListStatus(which, info);
+      await kvSet(({abdc:'abdc_v3', sjr:'sjr_v2'})[which], { entries, info });
+    } catch(e){}
+  }
+  annotateAll(); render();
+}
 ['sjr','abdc'].forEach(which => {
   $('#' + which + 'File').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
@@ -746,7 +767,7 @@ document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('clic
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }));
 
-restoreLists();
+restoreLists().then(() => autoLoadLists());
 })();
 </script>
 </body>
