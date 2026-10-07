@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pari-Shodhana-Sahay: Unified Research Literature Search</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F3F5F7; --surface:#FFFFFF; --ink:#18212F; --muted:#5A6474; --line:#D9DEE5;
+  --accent:#0E6A6A; --accent-soft:#E2F0EF; --warn:#9A3B22;
+  --q1:#1D7A4E; --q2:#5E9A3A; --q3:#B9892A; --q4:#A9533E;
+  --astar:#3F3A91; --a:#5E68B8; --b:#8A93C9; --c:#A7ADCF;
+  --openalex:#2563EB; --core:#7C3AED;
+  --serif:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12171E; --surface:#1A212B; --ink:#E6EAF0; --muted:#9AA4B2; --line:#2C3542;
+    --accent:#4FB3B3; --accent-soft:#17312F; --warn:#E08A6E;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg); color:var(--ink); font:15px/1.5 var(--sans)}
+a{color:var(--accent)}
+button,input,select{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.wrap{max-width:1180px; margin:0 auto; padding:28px 20px 60px}
+
+header{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px}
+h1{font:600 30px/1.1 var(--serif); margin:0; letter-spacing:-.01em}
+h1 small{display:block; font:400 14px/1.4 var(--sans); color:var(--muted); margin-top:6px; letter-spacing:0}
+.linkbtn{background:none; border:0; color:var(--accent); cursor:pointer; padding:4px 0; text-decoration:underline; text-underline-offset:3px}
+
+.search{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px}
+.qrow{display:flex; gap:10px}
+#q{flex:1; min-width:0; font:400 21px/1.3 var(--serif); padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--bg)}
+#q::placeholder{color:var(--muted); font-style:italic}
+.primary{background:var(--accent); color:#fff; border:0; border-radius:10px; padding:0 22px; font-weight:600; cursor:pointer}
+@media (prefers-color-scheme: dark){.primary{color:#0B1A1A}}
+.primary:disabled{opacity:.55; cursor:wait}
+.filters{display:flex; flex-wrap:wrap; gap:10px 18px; margin-top:14px; align-items:end}
+.filters label{display:flex; flex-direction:column; gap:3px; font-size:13px; color:var(--muted)}
+.filters input,.filters select{padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); font-size:14px}
+.filters input[type=number]{width:90px}
+.filters .check{flex-direction:row; align-items:center; gap:6px; padding-bottom:6px}
+.hint{font-size:13px; color:var(--muted); margin:10px 0 0}
+.hint code{background:var(--bg); padding:1px 5px; border-radius:4px}
+
+.settings{margin-top:14px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:0 18px}
+.settings summary{cursor:pointer; padding:14px 0; font-weight:500}
+.settings .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; padding-bottom:18px}
+.box h3{font:600 16px/1.3 var(--serif); margin:0 0 6px}
+.box p{margin:0 0 8px; font-size:14px; color:var(--muted)}
+.box input[type=text]{width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg)}
+.status{font-size:13px; margin-top:6px}
+.status.ok{color:var(--q1)} .status.no{color:var(--warn)}
+.filebtn{display:inline-block; border:1px solid var(--accent); color:var(--accent); border-radius:8px; padding:6px 12px; cursor:pointer; font-size:14px}
+.filebtn input{display:none}
+
+#msg{margin:18px 0 0; min-height:1.5em}
+#msg.err{color:var(--warn)}
+.resultbar{display:flex; flex-wrap:wrap; gap:14px; align-items:center; justify-content:space-between; margin-top:18px}
+.resultbar .count{font:600 18px/1.3 var(--serif)}
+.resultbar .count span{font:400 14px var(--sans); color:var(--muted)}
+.exports{display:flex; gap:8px; flex-wrap:wrap}
+.ghost{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer; font-size:14px}
+.ghost:hover{border-color:var(--accent)}
+
+.dist{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px}
+@media (max-width:760px){.dist{grid-template-columns:1fr}}
+.distbox{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px}
+.distbox .lbl{font-size:13px; color:var(--muted); margin-bottom:8px}
+.bar{display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--line); margin-bottom:10px}
+.bar i{display:block; height:100%}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{border:1px solid var(--line); background:var(--bg); border-radius:999px; padding:3px 10px 3px 8px; font-size:13px; cursor:pointer; display:inline-flex; gap:6px; align-items:center}
+.chip .dot{width:9px; height:9px; border-radius:50%}
+.chip[aria-pressed=true]{border-color:var(--accent); background:var(--accent-soft); font-weight:500}
+.chip b{font-weight:600}
+
+.tools{display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap}
+#within{flex:1; min-width:200px; max-width:380px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface)}
+
+.tablewrap{overflow-x:auto; margin-top:10px; background:var(--surface); border:1px solid var(--line); border-radius:12px}
+table{border-collapse:collapse; width:100%; min-width:900px}
+th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+th{font-size:13px; font-weight:500; color:var(--muted); white-space:nowrap; position:sticky; top:0; background:var(--surface)}
+th button{background:none; border:0; padding:0; cursor:pointer; color:inherit; font:inherit}
+th button[data-active=true]{color:var(--ink); font-weight:600}
+td.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+th.num{text-align:right}
+.ptitle{font:600 15.5px/1.35 var(--serif); color:var(--ink); text-decoration:none}
+.ptitle:hover{text-decoration:underline}
+.authors{font-size:13px; color:var(--muted); margin-top:3px}
+.journal{font-size:14px}
+.journal .pub{font-size:12px; color:var(--muted)}
+.tag{display:inline-block; min-width:30px; text-align:center; border-radius:6px; padding:1px 7px; font-size:12.5px; font-weight:600; color:#fff}
+.tag.none{background:transparent; color:var(--muted); font-weight:400; border:1px dashed var(--line)}
+.oa{font-size:12px; color:var(--q1)}
+.snip{font:14px/1.55 var(--serif); color:var(--muted); margin-top:6px; max-width:62ch}
+.snip mark{background:var(--accent-soft); color:var(--ink); padding:0 2px; border-radius:3px; font-weight:600}
+[hidden]{display:none !important}
+.src{font-size:11.5px; border:1px solid var(--line); border-radius:4px; padding:0 5px; margin-left:6px; color:var(--muted)}
+.src.openalex{border-color:var(--openalex); color:var(--openalex); background:rgba(37,99,235,.05)}
+.src.core{border-color:var(--core); color:var(--core); background:rgba(124,58,237,.05)}
+.abs-toggle{font-size:12.5px; background:none; border:0; color:var(--accent); cursor:pointer; padding:4px 0 0}
+tr.abs td{background:var(--bg); font:15px/1.65 var(--serif); padding:14px 18px}
+tr.abs .cats{font:13px/1.5 var(--sans); color:var(--muted); margin-top:8px}
+.empty{padding:40px 16px; text-align:center; color:var(--muted)}
+
+.log{margin-top:18px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:13.5px}
+.log p{margin:0 0 8px}
+footer{margin-top:34px; font-size:13px; color:var(--muted)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Pari-Shodhana-Sahay
+    <small>Search scholarly literature through OpenAlex and CORE. Results combined and ranked by citations, SJR quartile and ABDC grade.</small>
+  </h1>
+  <button class="linkbtn" id="openSettings" type="button">Journal lists</button>
+</header>
+
+<section class="search" aria-label="Search">
+  <div class="qrow">
+    <input id="q" type="search" autocomplete="off" placeholder='e.g. followership AND "national development"' aria-label="Search string">
+    <button class="primary" id="go" type="button">Search Both Sources</button>
+  </div>
+  <div class="filters">
+    <label>Author <input id="author" type="search" placeholder="e.g. Sivakumar" style="width:170px" autocomplete="off"></label>
+    <label>Search in
+      <select id="scope">
+        <option value="all">Title, abstract and full text</option>
+        <option value="ta">Title and abstract only</option>
+        <option value="title">Title only</option>
+      </select>
+    </label>
+    <label>From year <input id="from" type="number" min="1900" max="2100" placeholder="any"></label>
+    <label>To year <input id="to" type="number" min="1900" max="2100" placeholder="any"></label>
+    <label>Document type
+      <select id="type">
+        <option value="">All types</option>
+        <option value="article|review">Articles and reviews</option>
+        <option value="article">Articles only</option>
+        <option value="review">Reviews only</option>
+      </select>
+    </label>
+    <label>Min. citations <input id="mincite" type="number" min="0" placeholder="0"></label>
+    <label>Fetch by
+      <select id="sort">
+        <option value="relevance">Relevance</option>
+        <option value="cited">Most cited</option>
+        <option value="recent">Most recent</option>
+      </select>
+    </label>
+    <label>How many
+      <select id="count">
+        <option>50</option><option selected>100</option><option>200</option>
+      </select>
+    </label>
+    <label class="check"><input id="oa" type="checkbox"> Open access only</label>
+  </div>
+  <p class="hint">Use <code>AND</code>, <code>OR</code>, <code>NOT</code> in capitals, quotes for exact phrases, and brackets for grouping, for example <code>(leadership OR followership) AND India</code>.</p>
+</section>
+
+<details class="settings" id="settings">
+  <summary>SJR Quartiles and ABDC Grades</summary>
+  <div class="grid">
+    <div class="box">
+      <h3>SJR quartiles (SCImago)</h3>
+      <p>Download the journal ranking CSV from <a href="https://www.scimagojr.com/journalrank.php" target="_blank" rel="noopener">scimagojr.com</a>, then load it here.</p>
+      <label class="filebtn">Load SJR file<input type="file" id="sjrFile" accept=".csv,.xlsx,.xls"></label>
+      <div class="status" id="sjrStatus"></div>
+    </div>
+    <div class="box">
+      <h3>ABDC Journal Quality List</h3>
+      <p>Download the current list from <a href="https://abdc.edu.au/abdc-journal-quality-list/" target="_blank" rel="noopener">abdc.edu.au</a>, then load it here.</p>
+      <label class="filebtn">Load ABDC file<input type="file" id="abdcFile" accept=".xlsx,.xls,.csv"></label>
+      <div class="status" id="abdcStatus"></div>
+    </div>
+  </div>
+</details>
+
+<div id="msg" role="status" aria-live="polite"></div>
+
+<section id="results" hidden>
+  <div class="resultbar">
+    <div class="count" id="countLine"></div>
+    <div class="exports">
+      <button class="ghost" type="button" data-export="csv">Export CSV</button>
+      <button class="ghost" type="button" data-export="ris">Export RIS</button>
+      <button class="ghost" type="button" data-export="bib">Export BibTeX</button>
+    </div>
+  </div>
+
+  <div class="dist">
+    <div class="distbox"><div class="lbl">SJR best quartile (click to filter)</div><div id="qDist"></div></div>
+    <div class="distbox"><div class="lbl">ABDC grade (click to filter)</div><div id="aDist"></div></div>
+  </div>
+
+  <div class="tools">
+    <input id="within" type="search" placeholder="Filter results by title, author or journal">
+    <button class="linkbtn" id="clearFilters" type="button">Clear filters</button>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th class="num">#</th>
+        <th><button data-sort="title">Paper</button></th>
+        <th class="num"><button data-sort="year">Year</button></th>
+        <th><button data-sort="journal">Journal</button></th>
+        <th class="num"><button data-sort="cites">Citations</button></th>
+        <th class="num"><button data-sort="fwci">FWCI</button></th>
+        <th><button data-sort="q">SJR</button></th>
+        <th><button data-sort="abdc">ABDC</button></th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="log">
+    <p id="logText"></p>
+    <button class="ghost" id="copyLog" type="button">Copy search record</button>
+  </div>
+</section>
+
+<footer>
+  Bibliographic data: OpenAlex (CC0), CORE. Quartiles: SCImago. Grades: ABDC. Pari-Shodhana-Sahay combines results from both sources and deduplicates by DOI and title.
+</footer>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const OPENALEX_KEY = 'SnnTTiPl1fH2lTmdACpaxK';
+const CORE_KEY = 'ilcBZQzfDS1M8w6gRpNor43UKa0C2AHP';
+const CORE_RELAY = 'https://script.google.com/a/macros/sssihl.edu.in/s/AKfycbwnq199nqkZOUz4Jq6H0XB1kE7PIhEGEJeUMDO60yUPZl35mhHQuAjrvHVda_TP5v0S/exec';
+const SELECT = 'id,doi,display_name,publication_year,cited_by_count,fwci,primary_location,authorships,open_access,abstract_inverted_index,type';
+const Q_ORDER = ['Q1','Q2','Q3','Q4','none'];
+const A_ORDER = ['A*','A','B','C','none'];
+const Q_COL = {Q1:'var(--q1)',Q2:'var(--q2)',Q3:'var(--q3)',Q4:'var(--q4)',none:'var(--line)'};
+const A_COL = {'A*':'var(--astar)',A:'var(--a)',B:'var(--b)',C:'var(--c)',none:'var(--line)'};
+
+const state = { results: [], total: 0, sjr: null, abdc: null, fq: new Set(), fa: new Set(), within: '', sort: {key:null, dir:-1}, log: '' };
+
+const ls = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+};
+function idbOpen(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('pari', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function kvGet(k){
+  try { const db = await idbOpen();
+    return await new Promise((res, rej) => { const t = db.transaction('kv').objectStore('kv').get(k); t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error); });
+  } catch(e){ return null; }
+}
+async function kvSet(k, v){
+  try { const db = await idbOpen();
+    await new Promise((res, rej) => { const t = db.transaction('kv','readwrite').objectStore('kv').put(v, k); t.onsuccess = res; t.onerror = () => rej(t.error); });
+  } catch(e){}
+}
+
+function normIssn(s){
+  let x = String(s ?? '').toUpperCase().replace(/[^0-9X]/g,'');
+  if (!x) return null;
+  if (/^\d+$/.test(x) && x.length < 8) x = x.padStart(8,'0');
+  return x.length === 8 ? x : null;
+}
+function splitIssns(cell){
+  return String(cell ?? '').split(/[,;\/\s]+/).map(normIssn).filter(Boolean);
+}
+function normTitle(t){
+  return String(t ?? '').toLowerCase().replace(/&/g,' and ').replace(/^the\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();
+}
+
+async function readSheets(file){
+  const name = (file.name || '').toLowerCase();
+  if (name.endsWith('.csv') || name.endsWith('.txt')) {
+    const text = await file.text();
+    return [{ name: file.name, rows: Papa.parse(text, {skipEmptyLines:true}).data }];
+  }
+  const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+  return wb.SheetNames.map(n => ({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:false, defval:''}) }));
+}
+const yearIn = t => { const m = String(t).match(/(19|20)\d{2}/g); return m ? Math.max(...m.map(Number)) : 0; };
+function findHeader(rows, test){
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
+    const cells = rows[i].map(c => String(c).trim().toLowerCase());
+    if (test(cells)) return i;
+  }
+  return -1;
+}
+function parseSJR(rows){
+  const h = findHeader(rows, c => c.includes('issn') && c.some(x => x.includes('quartile')));
+  if (h < 0) throw new Error('Could not find Issn and SJR Quartile columns. Load the CSV from scimagojr.com.');
+  const hd = rows[h].map(c => String(c).trim().toLowerCase());
+  const col = f => hd.findIndex(f);
+  const cT = col(x => x === 'title'), cI = col(x => x === 'issn'), cQ = col(x => x.includes('quartile'));
+  const cS = col(x => x === 'sjr'), cC = col(x => x.startsWith('categor')), cH = col(x => x.startsWith('h index') || x === 'h-index');
+  const cId = col(x => x === 'sourceid'), cV = col(x => x === 'coverage'), cTy = col(x => x === 'type');
+  const out = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r || r.length < 3) continue;
+    const q = String(r[cQ] ?? '').trim().toUpperCase();
+    out.push({ title: r[cT] || '', issns: splitIssns(r[cI]), q: /^Q[1-4]$/.test(q) ? q : null,
+      sjr: cS >= 0 ? String(r[cS] ?? '').replace(',', '.') : '', cats: cC >= 0 ? String(r[cC] ?? '') : '', h: cH >= 0 ? r[cH] : '',
+      sid: cId >= 0 ? String(r[cId] ?? '').trim() : '', covEnd: cV >= 0 && (cTy < 0 || String(r[cTy]).trim().toLowerCase() === 'journal') ? yearIn(r[cV]) || null : null });
+  }
+  if (!out.length) throw new Error('The SJR file has no journal rows.');
+  return out;
+}
+function parseABDC(rows){
+  const h = findHeader(rows, c => c.some(x => x.includes('issn')) && c.some(x => x.includes('title')));
+  if (h < 0) throw new Error('Could not find Journal Title and ISSN columns. Load from abdc.edu.au.');
+  const hd = rows[h].map(c => String(c).trim().toLowerCase());
+  let cT = hd.findIndex(x => x.includes('journal title')); if (cT < 0) cT = hd.findIndex(x => x.includes('title'));
+  const cIs = hd.map((x,i) => x.includes('issn') ? i : -1).filter(i => i >= 0);
+  const isGrade = v => ['A*','A','B','C'].includes(String(v ?? '').trim().toUpperCase().replace(/\s/g,''));
+  const data = rows.slice(h + 1);
+  const gradeCols = hd.map((x,i) => {
+    const filled = data.filter(r => r && String(r[i] ?? '').trim() !== '');
+    const hits = filled.filter(r => isGrade(r[i])).length;
+    return filled.length && hits / filled.length > 0.8 ? {i, hits} : null;
+  }).filter(Boolean);
+  if (!gradeCols.length) throw new Error('Could not find ABDC grades column.');
+  const yr = i => { const m = hd[i].match(/(19|20)\d{2}/g); return m ? Math.max(...m.map(Number)) : 9999; };
+  gradeCols.sort((a,b) => yr(b.i) - yr(a.i) || b.hits - a.hits);
+  const cR = gradeCols[0].i;
+  const out = [];
+  for (const r of data) {
+    if (!r || !isGrade(r[cR])) continue;
+    out.push({ title: r[cT] || '', issns: cIs.flatMap(c => splitIssns(r[c])),
+      grade: String(r[cR]).trim().toUpperCase().replace(/\s/g,'') });
+  }
+  if (!out.length) throw new Error('The ABDC file has no rated journals.');
+  return { entries: out, ratingHeader: String(rows[h][cR]).trim() || ('column ' + (cR + 1)) };
+}
+function buildIndex(entries){
+  const byIssn = new Map(), byTitle = new Map();
+  entries.forEach((e,i) => {
+    e.issns.forEach(s => { if (!byIssn.has(s)) byIssn.set(s, i); });
+    const t = normTitle(e.title); if (t && !byTitle.has(t)) byTitle.set(t, i);
+  });
+  return { entries, byIssn, byTitle };
+}
+function lookup(idx, issns, title){
+  if (!idx) return null;
+  for (const s of issns) { if (idx.byIssn.has(s)) return idx.entries[idx.byIssn.get(s)]; }
+  const t = normTitle(title);
+  return t && idx.byTitle.has(t) ? idx.entries[idx.byTitle.get(t)] : null;
+}
+
+function setListStatus(which, info){
+  const el = $('#' + which + 'Status');
+  if (!info) { el.className = 'status no'; el.textContent = 'Not loaded yet.'; return; }
+  el.className = 'status ok';
+  el.textContent = `Loaded ${info.count.toLocaleString()} journals from ${info.file}, on ${new Date(info.at).toLocaleDateString()}.`;
+}
+async function loadList(which, file, save){
+  const sheets = await readSheets(file);
+  let entries, extra = '';
+  if (which === 'sjr') {
+    entries = parseSJR(sheets.reduce((a,b) => b.rows.length > a.rows.length ? b : a).rows);
+  } else {
+    let best = null, lastErr = null;
+    for (const sh of sheets) {
+      try {
+        const r = parseABDC(sh.rows);
+        const y = Math.max(yearIn(r.ratingHeader), yearIn(sh.name));
+        if (!best || y > best.y) best = { ...r, y, sheet: sh.name };
+      } catch(e){ lastErr = e; }
+    }
+    if (!best) throw lastErr || new Error('No ABDC grades found.');
+    entries = best.entries; extra = 'sheet: ' + best.sheet;
+  }
+  const info = { count: entries.length, file: file.name, at: Date.now(), extra };
+  state[which] = buildIndex(entries);
+  setListStatus(which, info);
+  if (save) await kvSet(({abdc:'abdc_v3', sjr:'sjr_v2'})[which], { entries, info });
+  annotateAll(); render();
+}
+async function restoreLists(){
+  for (const which of ['sjr','abdc']) {
+    const saved = await kvGet(({abdc:'abdc_v3', sjr:'sjr_v2'})[which]);
+    if (saved && saved.entries) { state[which] = buildIndex(saved.entries); setListStatus(which, saved.info); continue; }
+    setListStatus(which, null);
+  }
+  annotateAll(); render();
+}
+['sjr','abdc'].forEach(which => {
+  $('#' + which + 'File').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const el = $('#' + which + 'Status'); el.className = 'status'; el.textContent = 'Reading…';
+    try { await loadList(which, f, true); }
+    catch(err){ el.className = 'status no'; el.textContent = err.message; }
+    e.target.value = '';
+  });
+});
+
+function annotate(w){
+  const src = w.primary_location && w.primary_location.source;
+  const issns = src ? [src.issn_l, ...(src.issn || [])].map(normIssn).filter(Boolean) : [];
+  const sj = src ? lookup(state.sjr, issns, src.display_name) : null;
+  const ab = src ? lookup(state.abdc, issns, src.display_name) : null;
+  w._journal = src ? src.display_name : '';
+  w._publisher = src ? (src.host_organization_name || '') : '';
+  w._q = sj ? sj.q : null; w._sjr = sj ? sj.sjr : '';
+  w._abdc = ab ? ab.grade : null;
+}
+function annotateAll(){ state.results.forEach(annotate); }
+
+function params(){
+  return {
+    q: $('#q').value.trim(), scope: $('#scope').value, from: $('#from').value, to: $('#to').value,
+    type: $('#type').value, mincite: $('#mincite').value, sort: $('#sort').value,
+    count: +$('#count').value, oa: $('#oa').checked, author: $('#author').value.trim().replace(/\s+/g, ' ')
+  };
+}
+function buildUrl(p, page, per){
+  const u = new URL('https://api.openalex.org/works');
+  const f = [];
+  const safeQ = p.q.replace(/,/g, ' ');
+  if (p.q) {
+    if (p.scope === 'all') u.searchParams.set('search', p.q);
+    else if (p.scope === 'ta') f.push('title_and_abstract.search:' + safeQ);
+    else f.push('title.search:' + safeQ);
+  }
+  if (p.author) f.push('raw_author_name.search:' + p.author.replace(/,/g, ' '));
+  if (p.from) f.push('from_publication_date:' + p.from + '-01-01');
+  if (p.to) f.push('to_publication_date:' + p.to + '-12-31');
+  if (p.type) f.push('type:' + p.type);
+  if (p.oa) f.push('is_oa:true');
+  if (p.mincite && +p.mincite > 0) f.push('cited_by_count:>' + (+p.mincite - 1));
+  if (f.length) u.searchParams.set('filter', f.join(','));
+  const sort = p.sort === 'cited' ? 'cited_by_count:desc'
+             : p.sort === 'recent' ? 'publication_date:desc'
+             : 'cited_by_count:desc';
+  u.searchParams.set('sort', sort);
+  u.searchParams.set('per_page', per);
+  u.searchParams.set('page', page);
+  u.searchParams.set('select', SELECT);
+  u.searchParams.set('api_key', OPENALEX_KEY);
+  return u.toString();
+}
+async function getJSON(url){
+  const r = await fetch(url);
+  let body = null; try { body = await r.json(); } catch(e){}
+  if (!r.ok) {
+    const detail = body && (body.message || body.error) ? ` (${body.message || body.error})` : '';
+    throw new Error(r.status === 429 ? 'OpenAlex rate limit. Try again tomorrow.' + detail : `OpenAlex error ${r.status}${detail}.`);
+  }
+  return body;
+}
+function abstractOf(inv){
+  if (!inv) return '';
+  const words = [];
+  for (const [w, pos] of Object.entries(inv)) for (const i of pos) words[i] = w;
+  return words.filter(w => w !== undefined).join(' ');
+}
+async function runOpenAlex(p){
+  showMsg('Searching OpenAlex…');
+  const per = Math.min(100, p.count);
+  let out = [], page = 1, total = 0;
+  try {
+    while (out.length < p.count) {
+      const data = await getJSON(buildUrl(p, page, per));
+      total = data.meta ? data.meta.count : 0;
+      const rs = data.results || [];
+      out = out.concat(rs);
+      showMsg(`OpenAlex: ${Math.min(out.length, p.count).toLocaleString()} of ${Math.min(total, p.count).toLocaleString()}…`);
+      if (rs.length < per || out.length >= total) break;
+      page++;
+    }
+    out = out.slice(0, p.count);
+    out.forEach(w => { w._abstract = abstractOf(w.abstract_inverted_index); delete w.abstract_inverted_index; w._source = 'OpenAlex'; annotate(w); });
+    return {works: out, total: total};
+  } catch(e){
+    showMsg(e.message, true);
+    return null;
+  }
+}
+
+function coreQuery(p){
+  let q = p.q.replace(/\b[A-Za-z_]+:(?=\S)/g, '');
+  q = q.replace(/"([^"]+)"/g, (m, ph) => ' (' + ph.trim().split(/\s+/).join(' AND ') + ') ');
+  const toks = q.match(/\(|\)|[^\s()]+/g) || [];
+  const ops = new Set(['AND','OR','NOT']);
+  const out = [];
+  toks.forEach(t => {
+    const prev = out[out.length - 1];
+    const prevOperand = prev && !ops.has(prev) && prev !== '(';
+    const curStarts = !ops.has(t) && t !== ')' || t === 'NOT';
+    if (prevOperand && curStarts) out.push('AND');
+    out.push(t);
+  });
+  return out.join(' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');
+}
+async function coreGet(params){
+  const u = new URL(CORE_RELAY);
+  Object.entries(params).forEach(([k,v]) => u.searchParams.set(k, v));
+  const go = async () => {
+    let r = await fetch(u.toString());
+    const txt = await r.text();
+    let j; try { j = JSON.parse(txt); } catch(e){ throw new Error('CORE relay error.'); }
+    return j;
+  };
+  let j = await go();
+  if (j.status === 429) { showMsg('CORE rate limit…'); await new Promise(res => setTimeout(res, 11000)); j = await go(); }
+  const body = j.body || {};
+  if (j.status !== 200) throw new Error(`CORE error ${j.status}.`);
+  return body;
+}
+function coreAuthors(list){
+  const seen = new Set(), out = [];
+  (list || []).forEach(a => {
+    let n = String((a && a.name) || '').trim().replace(/\s+/g, ' ');
+    if (!n) return;
+    if (n.includes(',')) { const [last, ...rest] = n.split(','); n = (rest.join(' ').trim() + ' ' + last.trim()).trim(); }
+    const parts = n.replace(/[.]/g, ' ').trim().split(/\s+/);
+    const key = (parts[parts.length - 1] + '|' + parts[0][0]).toLowerCase().normalize('NFD').replace(/[^a-z|]/g, '');
+    if (seen.has(key)) return;
+    seen.add(key); out.push(n);
+  });
+  return out;
+}
+function fromCore(r){
+  const doi = r.doi ? String(r.doi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').toLowerCase() : '';
+  const j = (r.journals || [])[0] || {};
+  const issns = (j.identifiers || []).map(x => String(x).replace(/^issn:/i, ''));
+  const display = (r.links || []).find(l => l.type === 'display');
+  return {
+    id: 'https://core.ac.uk/works/' + r.id, doi: doi ? 'https://doi.org/' + doi : null,
+    display_name: r.title || 'Untitled', publication_year: r.yearPublished || null,
+    cited_by_count: r.citationCount || 0, fwci: null, type: '',
+    primary_location: { source: { display_name: j.title || '', issn_l: issns[0] || null, issn: issns, host_organization_name: r.publisher || '' } },
+    authorships: coreAuthors(r.authors).map(n => ({ author: { display_name: n } })),
+    open_access: { is_oa: !!(r.fullText || r.downloadUrl) },
+    _abstract: r.abstract || '', _source: 'CORE', _link: r.downloadUrl || (display && display.url) || null
+  };
+}
+async function runCore(p){
+  showMsg('Searching CORE…');
+  const q = [p.q ? coreQuery(p) : '', p.author ? '(' + p.author.split(/\s+/).join(' AND ') + ')' : ''].filter(Boolean).join(' AND ');
+  let out = [], total = 0, offset = 0;
+  try {
+    const CORE_PAGE = 25, target = Math.min(p.count, 100);
+    while (out.length < target) {
+      const data = await coreGet({ q, limit: CORE_PAGE, offset });
+      total = data.totalHits || 0;
+      const rs = data.results || [];
+      out = out.concat(rs.map(r => fromCore(r)));
+      showMsg(`CORE: ${out.length.toLocaleString()} of ${Math.min(total, target).toLocaleString()}…`);
+      if (rs.length < CORE_PAGE || offset + CORE_PAGE >= total) break;
+      offset += CORE_PAGE;
+    }
+    const seen = new Set();
+    out = out.filter(w => { const k = w.doi || (normTitle(w.display_name) + '|' + (w.publication_year || '')); if (seen.has(k)) return false; seen.add(k); return true; });
+    if (p.from) out = out.filter(w => !w.publication_year || w.publication_year >= +p.from);
+    if (p.to) out = out.filter(w => !w.publication_year || w.publication_year <= +p.to);
+    if (+p.mincite > 0) out = out.filter(w => (w.cited_by_count || 0) >= +p.mincite);
+    out.forEach(annotate);
+    return {works: out, total: total};
+  } catch(e){
+    showMsg(e.message, true);
+    return null;
+  }
+}
+
+async function runSearch(){
+  const p = params();
+  if (!p.q && !p.author) { showMsg('Type a search string, author name, or both.', true); $('#q').focus(); return; }
+  const btn = $('#go'); btn.disabled = true; btn.textContent = 'Searching…';
+  try {
+    const [oaResult, coreResult] = await Promise.all([runOpenAlex(p), runCore(p)]);
+    const allWorks = [];
+    if (oaResult) allWorks.push(...oaResult.works);
+    if (coreResult) allWorks.push(...coreResult.works);
+    if (!allWorks.length) {
+      showMsg('No papers matched.', false);
+      $('#results').hidden = true;
+      return;
+    }
+    const deduped = [];
+    const seen = new Set();
+    allWorks.sort((a, b) => (b.cited_by_count || 0) - (a.cited_by_count || 0));
+    allWorks.forEach(w => {
+      const key = w.doi || (normTitle(w.display_name) + '|' + (w.publication_year || ''));
+      if (!seen.has(key)) { seen.add(key); deduped.push(w); }
+    });
+    state.results = deduped.slice(0, p.count);
+    state.total = Math.max(oaResult?.total || 0, coreResult?.total || 0);
+    state.fq.clear(); state.fa.clear(); state.within = ''; $('#within').value = '';
+    state.sort = {key:null, dir:-1};
+    state.log = `Combined search from OpenAlex and CORE. Displayed: ${state.results.length.toLocaleString()} after deduplication.`;
+    showMsg('');
+    $('#results').hidden = false;
+    render();
+  } finally { btn.disabled = false; btn.textContent = 'Search Both Sources'; }
+}
+function showMsg(t, err){ const m = $('#msg'); m.textContent = t; m.className = err ? 'err' : ''; }
+
+const qKey = w => w._q || 'none', aKey = w => w._abdc || 'none';
+function visible(){
+  const t = state.within.toLowerCase();
+  return state.results.filter(w =>
+    (!state.fq.size || state.fq.has(qKey(w))) &&
+    (!state.fa.size || state.fa.has(aKey(w))) &&
+    (!t || (w.display_name || '').toLowerCase().includes(t) || (w._journal || '').toLowerCase().includes(t) ||
+      (w.authorships || []).some(a => (a.author && a.author.display_name || '').toLowerCase().includes(t))));
+}
+function distHTML(order, keyFn, colors, sel, loaded, which){
+  if (!loaded) return `<p style="margin:0;font-size:14px">Load the ${which === 'q' ? 'SJR' : 'ABDC'} file to see this.</p>`;
+  const n = state.results.length || 1;
+  const counts = Object.fromEntries(order.map(k => [k, 0]));
+  state.results.forEach(w => counts[keyFn(w)]++);
+  const label = k => k === 'none' ? (which === 'q' ? 'No quartile' : 'Not listed') : k;
+  return `<div class="bar">${order.map(k => `<i style="width:${counts[k]/n*100}%;background:${colors[k]}"></i>`).join('')}</div>
+    <div class="chips">${order.map(k => `<button class="chip" type="button" data-f="${which}" data-k="${k}" aria-pressed="${sel.has(k)}">
+      <span class="dot" style="background:${colors[k]}"></span>${label(k)} <b>${counts[k]}</b></button>`).join('')}</div>`;
+}
+function tag(v, colors){
+  return v ? `<span class="tag" style="background:${colors[v]}">${esc(v)}</span>` : '<span class="tag none">none</span>';
+}
+function render(){
+  if (!state.results.length) return;
+  const rows = visible();
+  $('#countLine').innerHTML = `${rows.length.toLocaleString()} papers <span>of ${state.results.length.toLocaleString()} total</span>`;
+  $('#qDist').innerHTML = distHTML(Q_ORDER, qKey, Q_COL, state.fq, !!state.sjr, 'q');
+  $('#aDist').innerHTML = distHTML(A_ORDER, aKey, A_COL, state.fa, !!state.abdc, 'a');
+  document.querySelectorAll('th button').forEach(b => b.dataset.active = b.dataset.sort === state.sort.key);
+  $('#tbody').innerHTML = rows.length ? rows.map((w, i) => {
+    const au = (w.authorships || []).map(a => a.author && a.author.display_name).filter(Boolean);
+    const auTxt = au.length > 3 ? au.slice(0,3).join(', ') + ' et al.' : au.join(', ');
+    const link = w.doi || w._link || w.id;
+    const src = w._source === 'CORE' ? '<span class="src core">CORE</span>' : '<span class="src openalex">OpenAlex</span>';
+    const oa = w.open_access && w.open_access.is_oa ? ' <span class="oa">open access</span>' : '';
+    return `<tr>
+      <td class="num">${i + 1}</td>
+      <td><a class="ptitle" href="${esc(link)}" target="_blank" rel="noopener">${esc(w.display_name || 'Untitled')}</a>
+        <div class="authors">${esc(auTxt)}${oa} ${src}</div>
+        ${w._abstract ? `<button class="abs-toggle" type="button" data-id="${esc(w.id)}" aria-expanded="false">Show abstract</button>` : ''}</td>
+      <td class="num">${w.publication_year || ''}</td>
+      <td class="journal">${esc(w._journal || '')}${w._publisher ? `<div class="pub">${esc(w._publisher)}</div>` : ''}</td>
+      <td class="num">${(w.cited_by_count || 0).toLocaleString()}</td>
+      <td class="num">${w.fwci != null ? w.fwci.toFixed(2) : ''}</td>
+      <td>${state.sjr ? tag(w._q, Q_COL) : ''}</td>
+      <td>${state.abdc ? tag(w._abdc, A_COL) : ''}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="8" class="empty">No papers match these filters.</td></tr>';
+  $('#logText').textContent = state.log;
+}
+document.addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (chip) { const s = chip.dataset.f === 'q' ? state.fq : state.fa; const k = chip.dataset.k; s.has(k) ? s.delete(k) : s.add(k); render(); return; }
+  const sb = e.target.closest('th button');
+  if (sb) { const k = sb.dataset.sort; state.sort = state.sort.key === k ? {key:k, dir:-state.sort.dir} : {key:k, dir:-1}; render(); return; }
+  const at = e.target.closest('.abs-toggle');
+  if (at) {
+    const tr = at.closest('tr'); const next = tr.nextElementSibling;
+    if (next && next.classList.contains('abs')) { next.remove(); at.textContent = 'Show abstract'; at.setAttribute('aria-expanded','false'); return; }
+    const w = state.results.find(x => x.id === at.dataset.id);
+    const row = document.createElement('tr'); row.className = 'abs';
+    row.innerHTML = `<td></td><td colspan="7">${esc(w._abstract || 'No abstract available.')}</td>`;
+    tr.after(row); at.textContent = 'Hide abstract'; at.setAttribute('aria-expanded','true');
+  }
+});
+$('#within').addEventListener('input', e => { state.within = e.target.value; render(); });
+$('#clearFilters').addEventListener('click', () => { state.fq.clear(); state.fa.clear(); state.within = ''; $('#within').value = ''; render(); });
+$('#go').addEventListener('click', runSearch);
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+$('#author').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+$('#openSettings').addEventListener('click', () => { const d = $('#settings'); d.open = true; d.scrollIntoView({behavior:'smooth', block:'start'}); });
+$('#copyLog').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(state.log); $('#copyLog').textContent = 'Copied'; }
+  catch(e){ $('#copyLog').textContent = 'Copy failed'; }
+  setTimeout(() => $('#copyLog').textContent = 'Copy search record', 1800);
+});
+
+/* exports */
+function authorsOf(w){ return (w.authorships || []).map(a => a.author && a.author.display_name).filter(Boolean); }
+function doiBare(w){ return w.doi ? w.doi.replace(/^https?:\/\/doi\.org\//i, '') : ''; }
+function toCSV(rows){
+  const head = ['Title','Authors','Year','Journal','Source','Citations','FWCI','SJR','ABDC','Open access','DOI','Link'];
+  const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  return '﻿' + [head, ...rows.map(w => [w.display_name, authorsOf(w).join('; '), w.publication_year, w._journal,
+    w._source, w.cited_by_count, w.fwci != null ? w.fwci.toFixed(2) : '', w._q || '', w._abdc || '',
+    w.open_access && w.open_access.is_oa ? 'yes' : 'no', doiBare(w), w._link || w.id])].map(r => r.map(q).join(',')).join('\n');
+}
+function toRIS(rows){
+  return rows.map(w => {
+    const L = ['TY  - JOUR', 'TI  - ' + (w.display_name || '')];
+    authorsOf(w).forEach(a => L.push('AU  - ' + a));
+    if (w.publication_year) L.push('PY  - ' + w.publication_year);
+    if (w._journal) L.push('JO  - ' + w._journal);
+    if (doiBare(w)) L.push('DO  - ' + doiBare(w));
+    L.push('UR  - ' + (w.doi || w.id));
+    L.push(`N1  - Source: ${w._source}`);
+    L.push('ER  - '); return L.join('\r\n');
+  }).join('\r\n\r\n');
+}
+function toBib(rows){
+  const used = {};
+  const clean = s => String(s ?? '').replace(/[{}]/g, '');
+  return rows.map(w => {
+    const au = authorsOf(w);
+    const last = au.length ? au[0].split(/\s+/).pop() : 'anon';
+    const first = (w.display_name || 'paper').split(/\s+/).find(x => x.length > 3) || 'paper';
+    let key = (last + (w.publication_year || '') + first).normalize('NFD').replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+    used[key] = (used[key] || 0) + 1; if (used[key] > 1) key += String.fromCharCode(96 + used[key]);
+    const f = [`  title = {${clean(w.display_name)}}`, `  author = {${clean(au.join(' and '))}}`];
+    if (w.publication_year) f.push(`  year = {${w.publication_year}}`);
+    if (w._journal) f.push(`  journal = {${clean(w._journal)}}`);
+    if (doiBare(w)) f.push(`  doi = {${doiBare(w)}}`);
+    return `@article{${key},\n${f.join(',\n')}\n}`;
+  }).join('\n\n');
+}
+document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => {
+  const rows = visible(); if (!rows.length) return;
+  const kind = b.dataset.export;
+  const text = kind === 'csv' ? toCSV(rows) : kind === 'ris' ? toRIS(rows) : toBib(rows);
+  const type = kind === 'csv' ? 'text/csv' : 'text/plain';
+  const stem = 'pari-' + ($('#q').value.trim().replace(/[^A-Za-z0-9]+/g, '-').slice(0, 40) || 'results');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type: type + ';charset=utf-8'}));
+  a.download = `${stem}.${kind === 'bib' ? 'bib' : kind}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}));
+
+restoreLists();
+})();
+</script>
+</body>
+</html>
