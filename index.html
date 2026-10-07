@@ -642,11 +642,29 @@ function showMsg(t, err){ const m = $('#msg'); m.textContent = t; m.className = 
 const qKey = w => w._q || 'none', aKey = w => w._abdc || 'none';
 function visible(){
   const t = state.within.toLowerCase();
-  return state.results.filter(w =>
+  let rows = state.results.filter(w =>
     (!state.fq.size || state.fq.has(qKey(w))) &&
     (!state.fa.size || state.fa.has(aKey(w))) &&
     (!t || (w.display_name || '').toLowerCase().includes(t) || (w._journal || '').toLowerCase().includes(t) ||
       (w.authorships || []).some(a => (a.author && a.author.display_name || '').toLowerCase().includes(t))));
+  if (state.sort.key) {
+    const key = state.sort.key;
+    const dir = state.sort.dir;
+    const getCmpVal = w => {
+      if (key === 'cites') return w.cited_by_count || 0;
+      if (key === 'fwci') return w.fwci ?? -1;
+      if (key === 'year') return w.publication_year || 0;
+      if (key === 'title') return (w.display_name || '').toLowerCase();
+      if (key === 'journal') return (w._journal || '').toLowerCase();
+      return 0;
+    };
+    rows.sort((a, b) => {
+      const va = getCmpVal(a), vb = getCmpVal(b);
+      if (typeof va === 'string') return dir * va.localeCompare(vb);
+      return dir * (va - vb);
+    });
+  }
+  return rows;
 }
 function distHTML(order, keyFn, colors, sel, loaded, which){
   if (!loaded) return `<p style="margin:0;font-size:14px">Load the ${which === 'q' ? 'SJR' : 'ABDC'} file to see this.</p>`;
