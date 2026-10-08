@@ -89,6 +89,12 @@ h1 small{display:block; font:400 14px/1.4 var(--sans); color:var(--muted); margi
 .tools{display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap}
 #within{flex:1; min-width:200px; max-width:380px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface)}
 
+footer{margin-top:40px; padding-top:20px; padding-bottom:20px; border-top:1px solid var(--line); font-size:13px; color:var(--muted); line-height:1.6}
+.footer-contact{margin-top:14px; font-size:14px}
+.footer-contact a{font-weight:500; color:var(--accent); text-decoration:none}
+.footer-contact a:hover{text-decoration:underline}
+.visits{margin-top:12px; font-size:12px}
+
 .tablewrap{overflow-x:auto; margin-top:10px; background:var(--surface); border:1px solid var(--line); border-radius:12px}
 table{border-collapse:collapse; width:100%; min-width:900px}
 th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
@@ -237,7 +243,11 @@ footer{margin-top:34px; font-size:13px; color:var(--muted)}
 </section>
 
 <footer>
-  Bibliographic data: OpenAlex (CC0), CORE. Quartiles: SCImago. Grades: ABDC. Pari-Shodhana-Sahay combines results from both sources and deduplicates by DOI and title.
+  <div>Bibliographic data: OpenAlex (CC0), CORE. Quartiles: SCImago. Grades: ABDC. Pari-Shodhana-Sahay combines results from both sources and deduplicates by DOI and title.</div>
+  <div class="footer-contact">
+    <a href="mailto:rlkprasad@gmail.com">Send feedback or queries</a>
+  </div>
+  <div class="visits">Visitors: <span id="visitCount">0</span></div>
 </footer>
 </div>
 
@@ -248,6 +258,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const OPENALEX_KEY = 'SnnTTiPl1fH2lTmdACpaxK';
 const CORE_KEY = 'ilcBZQzfDS1M8w6gRpNor43UKa0C2AHP';
 const CORE_RELAY = 'https://script.google.com/a/macros/sssihl.edu.in/s/AKfycbwnq199nqkZOUz4Jq6H0XB1kE7PIhEGEJeUMDO60yUPZl35mhHQuAjrvHVda_TP5v0S/exec';
+const SUPABASE_URL = 'https://wsxjueoihzesyiyplaja.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzeGp1ZW9paHplc3lpeXBsYWphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTY3MDYsImV4cCI6MjA5NTg5MjcwNn0.4-__e2TMQQwd0R9aRbpwEZ2_gfQVi7Vq54wJixRA8Sc';
 const SELECT = 'id,doi,display_name,publication_year,cited_by_count,fwci,primary_location,authorships,open_access,abstract_inverted_index,type';
 const Q_ORDER = ['Q1','Q2','Q3','Q4','none'];
 const A_ORDER = ['A*','A','B','C','none'];
@@ -786,6 +798,38 @@ document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('clic
 }));
 
 restoreLists().then(() => autoLoadLists());
+
+/* visitor counter from Supabase */
+async function initVisitCounter(){
+  const countElem = $('#visitCount');
+  if (!countElem) return;
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/visitors?id=eq.pari-shodhana`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
+    let data = await response.json();
+    let count = 0;
+    if (data && data.length > 0) {
+      count = data[0].count || 0;
+    }
+    count++;
+    const updateResp = await fetch(`${SUPABASE_URL}/rest/v1/visitors?id=eq.pari-shodhana`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ count: count })
+    });
+    countElem.textContent = count.toLocaleString();
+  } catch (e) {
+    countElem.textContent = '...';
+  }
+}
+initVisitCounter();
 })();
 </script>
 </body>
