@@ -73,6 +73,8 @@ h1 small{display:block; font:400 14px/1.4 var(--sans); color:var(--muted); margi
 .exports{display:flex; gap:8px; flex-wrap:wrap}
 .ghost{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer; font-size:14px}
 .ghost:hover{border-color:var(--accent)}
+.dl-btn{background:none; border:none; color:var(--accent); cursor:pointer; font-size:16px; padding:2px 4px; margin-right:6px; text-decoration:none}
+.dl-btn:hover{opacity:.7}
 
 .dist{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px}
 @media (max-width:760px){.dist{grid-template-columns:1fr}}
@@ -207,6 +209,7 @@ footer{margin-top:34px; font-size:13px; color:var(--muted)}
       <button class="ghost" type="button" data-export="csv">Export CSV</button>
       <button class="ghost" type="button" data-export="ris">Export RIS</button>
       <button class="ghost" type="button" data-export="bib">Export BibTeX</button>
+      <button class="ghost" type="button" id="dlLinks">Download Links</button>
     </div>
   </div>
 
@@ -704,9 +707,10 @@ function render(){
     const link = w.doi || w._link || w.id;
     const src = w._source === 'CORE' ? '<span class="src core">CORE</span>' : '<span class="src openalex">OpenAlex</span>';
     const oa = w.open_access && w.open_access.is_oa ? ' <span class="oa">open access</span>' : '';
+    const dlBtn = w._link ? `<button class="dl-btn" type="button" data-link="${esc(w._link)}" title="Download PDF">⬇</button>` : '';
     return `<tr>
       <td class="num">${i + 1}</td>
-      <td><a class="ptitle" href="${esc(link)}" target="_blank" rel="noopener">${esc(w.display_name || 'Untitled')}</a>
+      <td>${dlBtn}<a class="ptitle" href="${esc(link)}" target="_blank" rel="noopener">${esc(w.display_name || 'Untitled')}</a>
         <div class="authors">${esc(auTxt)}${oa} ${src}</div>
         ${w._abstract ? `<button class="abs-toggle" type="button" data-id="${esc(w.id)}" aria-expanded="false">Show abstract</button>` : ''}</td>
       <td class="num">${w.publication_year || ''}</td>
@@ -733,6 +737,8 @@ document.addEventListener('click', e => {
     row.innerHTML = `<td></td><td colspan="7">${esc(w._abstract || 'No abstract available.')}</td>`;
     tr.after(row); at.textContent = 'Hide abstract'; at.setAttribute('aria-expanded','true');
   }
+  const dlBtn = e.target.closest('.dl-btn');
+  if (dlBtn) { window.open(dlBtn.dataset.link, '_blank'); return; }
 });
 $('#within').addEventListener('input', e => { state.within = e.target.value; render(); });
 $('#clearFilters').addEventListener('click', () => { state.fq.clear(); state.fa.clear(); state.within = ''; $('#within').value = ''; render(); });
@@ -744,6 +750,18 @@ $('#copyLog').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(state.log); $('#copyLog').textContent = 'Copied'; }
   catch(e){ $('#copyLog').textContent = 'Copy failed'; }
   setTimeout(() => $('#copyLog').textContent = 'Copy search record', 1800);
+});
+$('#dlLinks').addEventListener('click', () => {
+  const rows = visible();
+  if (!rows.length) return;
+  const links = rows.filter(w => w._link).map(w => w._link).join('\n');
+  if (!links) { alert('No download links available for these papers.'); return; }
+  const stem = 'pari-' + ($('#q').value.trim().replace(/[^A-Za-z0-9]+/g, '-').slice(0, 40) || 'links');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([links], {type: 'text/plain;charset=utf-8'}));
+  a.download = stem + '.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 });
 
 /* exports */
