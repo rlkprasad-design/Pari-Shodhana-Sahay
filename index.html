@@ -263,7 +263,7 @@ const CORE_KEY = 'ilcBZQzfDS1M8w6gRpNor43UKa0C2AHP';
 const CORE_RELAY = 'https://script.google.com/a/macros/sssihl.edu.in/s/AKfycbwnq199nqkZOUz4Jq6H0XB1kE7PIhEGEJeUMDO60yUPZl35mhHQuAjrvHVda_TP5v0S/exec';
 const SUPABASE_URL = 'https://wsxjueoihzesyiyplaja.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzeGp1ZW9paHplc3lpeXBsYWphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTY3MDYsImV4cCI6MjA5NTg5MjcwNn0.4-__e2TMQQwd0R9aRbpwEZ2_gfQVi7Vq54wJixRA8Sc';
-const SELECT = 'id,doi,display_name,publication_year,cited_by_count,fwci,primary_location,authorships,open_access,abstract_inverted_index,type';
+const SELECT = 'id,doi,display_name,publication_year,cited_by_count,fwci,primary_location,authorships,open_access,best_oa_location,abstract_inverted_index,type';
 const Q_ORDER = ['Q1','Q2','Q3','Q4','none'];
 const A_ORDER = ['A*','A','B','C','none'];
 const Q_COL = {Q1:'var(--q1)',Q2:'var(--q2)',Q3:'var(--q3)',Q4:'var(--q4)',none:'var(--line)'};
@@ -527,7 +527,10 @@ async function runOpenAlex(p){
       page++;
     }
     out = out.slice(0, p.count);
-    out.forEach(w => { w._abstract = abstractOf(w.abstract_inverted_index); delete w.abstract_inverted_index; w._source = 'OpenAlex'; annotate(w); });
+    out.forEach(w => { w._abstract = abstractOf(w.abstract_inverted_index); delete w.abstract_inverted_index; w._source = 'OpenAlex';
+      const bl = w.best_oa_location || {};
+      w._link = (w.open_access && w.open_access.is_oa) ? (bl.pdf_url || bl.landing_page_url || w.open_access.oa_url || null) : null;
+      annotate(w); });
     return {works: out, total: total};
   } catch(e){
     showMsg(e.message, true);
@@ -635,10 +638,19 @@ async function runSearch(){
       $('#results').hidden = true;
       return;
     }
+    let filtered = allWorks;
+    if (p.oa) {
+      filtered = allWorks.filter(w => w.open_access && w.open_access.is_oa);
+      if (!filtered.length) {
+        showMsg('No openly accessible papers matched.', false);
+        $('#results').hidden = true;
+        return;
+      }
+    }
     const deduped = [];
     const seen = new Set();
-    allWorks.sort((a, b) => (b.cited_by_count || 0) - (a.cited_by_count || 0));
-    allWorks.forEach(w => {
+    filtered.sort((a, b) => (b.cited_by_count || 0) - (a.cited_by_count || 0));
+    filtered.forEach(w => {
       const key = w.doi || (normTitle(w.display_name) + '|' + (w.publication_year || ''));
       if (!seen.has(key)) { seen.add(key); deduped.push(w); }
     });
@@ -646,7 +658,7 @@ async function runSearch(){
     state.total = Math.max(oaResult?.total || 0, coreResult?.total || 0);
     state.fq.clear(); state.fa.clear(); state.within = ''; $('#within').value = '';
     state.sort = {key:null, dir:-1};
-    state.log = `Combined search from OpenAlex and CORE. Displayed: ${state.results.length.toLocaleString()} after deduplication.`;
+    state.log = `Combined search from OpenAlex and CORE. Displayed: ${state.results.length.toLocaleString()} after deduplication${p.oa ? ' and open access filtering' : ''}.`;
     showMsg('');
     $('#results').hidden = false;
     render();
