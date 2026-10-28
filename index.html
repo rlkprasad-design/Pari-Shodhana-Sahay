@@ -625,6 +625,15 @@ async function runCore(p){
   }
 }
 
+const normName = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+function authorMatch(w, text){
+  const want = normName(text);
+  if (!want.length) return true;
+  return (w.authorships || []).some(a => {
+    const have = normName(a.author && a.author.display_name);
+    return want.every(t => have.some(h => h.startsWith(t)));
+  });
+}
 function smartQuery(q){
   const doiM = q.match(/\b(10\.\d{4,9}\/[^\s"<>]+)/i);
   if (doiM) return { doi: doiM[1].replace(/[.,;)]+$/, '').toLowerCase() };
@@ -641,10 +650,13 @@ async function runSearch(){
   if (!p.q && !p.author && !p.doi) { showMsg('Type a search string, author name, or both.', true); $('#q').focus(); return; }
   const btn = $('#go'); btn.disabled = true; btn.textContent = 'Searching…';
   try {
-    const [oaResult, coreResult] = await Promise.all([runOpenAlex(p), runCore(p)]);
+    const withText = !!(p.q || p.doi);
+    let [oaResult, coreResult] = await Promise.all([runOpenAlex(p), runCore(withText ? {...p, author:''} : p)]);
+    if (p.author && withText && !(oaResult && oaResult.works.length)) oaResult = await runOpenAlex({...p, author:''}) || oaResult;
     const allWorks = [];
     if (oaResult) allWorks.push(...oaResult.works);
     if (coreResult) allWorks.push(...coreResult.works);
+    if (p.author) { const kept = allWorks.filter(w => authorMatch(w, p.author)); allWorks.length = 0; allWorks.push(...kept); }
     if (!allWorks.length) {
       showMsg(p.oa ? 'No papers matched. "Open access only" is ticked, so papers not marked open access were hidden. Untick it to see them.' : 'No papers matched. Try fewer words, the exact title in quotes, or the DOI.', false);
       $('#results').hidden = true;
