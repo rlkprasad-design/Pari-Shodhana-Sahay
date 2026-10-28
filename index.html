@@ -912,30 +912,26 @@ restoreLists().then(() => autoLoadLists());
 async function initVisitCounter(){
   const countElem = $('#visitCount');
   if (!countElem) return;
+  const base = `${SUPABASE_URL}/rest/v1/visitors`;
+  const H = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
+  const fail = why => { console.warn('Visitor counter:', why); countElem.textContent = 'unavailable'; countElem.title = String(why); };
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/visitors?id=eq.pari-shodhana`, {
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Content-Type': 'application/json'
-      }
-    });
-    let data = await response.json();
-    let count = 0;
-    if (data && data.length > 0) {
-      count = data[0].count || 0;
+    const r = await fetch(`${base}?id=eq.pari-shodhana&select=count`, { headers: H });
+    if (!r.ok) { fail('read failed, HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200)); return; }
+    const data = await r.json();
+    let count;
+    if (data.length) {
+      count = (+data[0].count || 0) + 1;
+      const u = await fetch(`${base}?id=eq.pari-shodhana`, { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ count }) });
+      if (!u.ok) { countElem.textContent = (count - 1).toLocaleString(); countElem.title = 'Could not save the new count, HTTP ' + u.status; console.warn('Visitor counter: update failed', u.status, await u.text()); return; }
+    } else {
+      count = 1;
+      const c = await fetch(base, { method: 'POST', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ id: 'pari-shodhana', count }) });
+      if (!c.ok) { fail('row missing and could not be created, HTTP ' + c.status + ' ' + (await c.text()).slice(0, 200)); return; }
     }
-    count++;
-    const updateResp = await fetch(`${SUPABASE_URL}/rest/v1/visitors?id=eq.pari-shodhana`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ count: count })
-    });
     countElem.textContent = count.toLocaleString();
   } catch (e) {
-    countElem.textContent = '...';
+    fail('network error: ' + e.message + ' (the Supabase project may be paused)');
   }
 }
 initVisitCounter();
