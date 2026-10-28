@@ -480,6 +480,7 @@ function buildUrl(p, page, per){
     else if (p.scope === 'ta') f.push('title_and_abstract.search:' + safeQ);
     else f.push('title.search:' + safeQ);
   }
+  if (p.doi) f.push('doi:https://doi.org/' + p.doi);
   if (p.author) f.push('raw_author_name.search:' + p.author.replace(/,/g, ' '));
   if (p.from) f.push('from_publication_date:' + p.from + '-01-01');
   if (p.to) f.push('to_publication_date:' + p.to + '-12-31');
@@ -598,7 +599,7 @@ function fromCore(r){
 }
 async function runCore(p){
   showMsg('Searching CORE…');
-  const q = [p.q ? coreQuery(p) : '', p.author ? '(' + p.author.split(/\s+/).join(' AND ') + ')' : ''].filter(Boolean).join(' AND ');
+  const q = p.doi ? 'doi:"' + p.doi + '"' : [p.q ? coreQuery(p) : '', p.author ? '(' + p.author.split(/\s+/).join(' AND ') + ')' : ''].filter(Boolean).join(' AND ');
   let out = [], total = 0, offset = 0;
   try {
     const CORE_PAGE = 25, target = Math.min(p.count, 100);
@@ -624,9 +625,20 @@ async function runCore(p){
   }
 }
 
+function smartQuery(q){
+  const doiM = q.match(/\b(10\.\d{4,9}\/[^\s"<>]+)/i);
+  if (doiM) return { doi: doiM[1].replace(/[.,;)]+$/, '').toLowerCase() };
+  const cit = q.match(/\((?:19|20)\d{2}[a-z]?\)\.?,?\s*([^.?!]{12,}[?!]?)/);
+  if (cit && /,/.test(q.slice(0, cit.index))) return { title: cit[1].trim().replace(/[,;:]+$/, '') };
+  return null;
+}
 async function runSearch(){
   const p = params();
-  if (!p.q && !p.author) { showMsg('Type a search string, author name, or both.', true); $('#q').focus(); return; }
+  const sq = smartQuery(p.q);
+  let note = '';
+  if (sq && sq.doi) { p.doi = sq.doi; p.q = ''; note = ' Detected a DOI, so the search used the DOI directly.'; }
+  else if (sq && sq.title) { p.q = '"' + sq.title + '"'; note = ' Detected a pasted citation, so the search used its title.'; }
+  if (!p.q && !p.author && !p.doi) { showMsg('Type a search string, author name, or both.', true); $('#q').focus(); return; }
   const btn = $('#go'); btn.disabled = true; btn.textContent = 'Searching…';
   try {
     const [oaResult, coreResult] = await Promise.all([runOpenAlex(p), runCore(p)]);
@@ -634,7 +646,7 @@ async function runSearch(){
     if (oaResult) allWorks.push(...oaResult.works);
     if (coreResult) allWorks.push(...coreResult.works);
     if (!allWorks.length) {
-      showMsg('No papers matched.', false);
+      showMsg(p.oa ? 'No papers matched. "Open access only" is ticked, so papers not marked open access were hidden. Untick it to see them.' : 'No papers matched. Try fewer words, the exact title in quotes, or the DOI.', false);
       $('#results').hidden = true;
       return;
     }
@@ -642,7 +654,7 @@ async function runSearch(){
     if (p.oa) {
       filtered = allWorks.filter(w => w.open_access && w.open_access.is_oa);
       if (!filtered.length) {
-        showMsg('No openly accessible papers matched.', false);
+        showMsg('Papers were found, but none is marked open access. Untick "Open access only" to see them.', false);
         $('#results').hidden = true;
         return;
       }
@@ -658,7 +670,7 @@ async function runSearch(){
     state.total = Math.max(oaResult?.total || 0, coreResult?.total || 0);
     state.fq.clear(); state.fa.clear(); state.within = ''; $('#within').value = '';
     state.sort = {key:null, dir:-1};
-    state.log = `Combined search from OpenAlex and CORE. Displayed: ${state.results.length.toLocaleString()} after deduplication${p.oa ? ' and open access filtering' : ''}.`;
+    state.log = `Combined search from OpenAlex and CORE. Displayed: ${state.results.length.toLocaleString()} after deduplication${p.oa ? ' and open access filtering' : ''}.${note}`;
     showMsg('');
     $('#results').hidden = false;
     render();
