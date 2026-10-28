@@ -263,7 +263,7 @@ const CORE_KEY = 'ilcBZQzfDS1M8w6gRpNor43UKa0C2AHP';
 const CORE_RELAY = 'https://script.google.com/a/macros/sssihl.edu.in/s/AKfycbwnq199nqkZOUz4Jq6H0XB1kE7PIhEGEJeUMDO60yUPZl35mhHQuAjrvHVda_TP5v0S/exec';
 const SUPABASE_URL = 'https://wsxjueoihzesyiyplaja.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzeGp1ZW9paHplc3lpeXBsYWphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTY3MDYsImV4cCI6MjA5NTg5MjcwNn0.4-__e2TMQQwd0R9aRbpwEZ2_gfQVi7Vq54wJixRA8Sc';
-const SELECT = 'id,doi,display_name,publication_year,cited_by_count,fwci,primary_location,authorships,open_access,best_oa_location,abstract_inverted_index,type';
+const SELECT = 'id,doi,display_name,publication_year,cited_by_count,fwci,primary_location,authorships,open_access,best_oa_location,locations,abstract_inverted_index,type';
 const Q_ORDER = ['Q1','Q2','Q3','Q4','none'];
 const A_ORDER = ['A*','A','B','C','none'];
 const Q_COL = {Q1:'var(--q1)',Q2:'var(--q2)',Q3:'var(--q3)',Q4:'var(--q4)',none:'var(--line)'};
@@ -485,7 +485,6 @@ function buildUrl(p, page, per){
   if (p.from) f.push('from_publication_date:' + p.from + '-01-01');
   if (p.to) f.push('to_publication_date:' + p.to + '-12-31');
   if (p.type) f.push('type:' + p.type);
-  if (p.oa) f.push('is_oa:true');
   if (p.mincite && +p.mincite > 0) f.push('cited_by_count:>' + (+p.mincite - 1));
   if (f.length) u.searchParams.set('filter', f.join(','));
   const sort = p.sort === 'cited' ? 'cited_by_count:desc'
@@ -530,7 +529,10 @@ async function runOpenAlex(p){
     out = out.slice(0, p.count);
     out.forEach(w => { w._abstract = abstractOf(w.abstract_inverted_index); delete w.abstract_inverted_index; w._source = 'OpenAlex';
       const bl = w.best_oa_location || {};
-      w._link = (w.open_access && w.open_access.is_oa) ? (bl.pdf_url || bl.landing_page_url || w.open_access.oa_url || null) : null;
+      const ol = (w.locations || []).filter(l => l && l.is_oa);
+      const pdfLoc = bl.pdf_url ? bl : ol.find(l => l.pdf_url);
+      w._link = (w.open_access && w.open_access.is_oa) ? ((pdfLoc && pdfLoc.pdf_url) || bl.landing_page_url || (ol[0] && ol[0].landing_page_url) || w.open_access.oa_url || null) : null;
+      delete w.locations;
       annotate(w); });
     return {works: out, total: total};
   } catch(e){
@@ -662,31 +664,84 @@ async function runSearch(){
       $('#results').hidden = true;
       return;
     }
-    let filtered = allWorks;
-    if (p.oa) {
-      filtered = allWorks.filter(w => w.open_access && w.open_access.is_oa);
-      if (!filtered.length) {
-        showMsg('Papers were found, but none is marked open access. Untick "Open access only" to see them.', false);
-        $('#results').hidden = true;
-        return;
-      }
-    }
-    const deduped = [];
-    const seen = new Set();
-    filtered.sort((a, b) => (b.cited_by_count || 0) - (a.cited_by_count || 0));
-    filtered.forEach(w => {
+    const isOA = w => !!(w.open_access && w.open_access.is_oa);
+    allWorks.sort((a, b) => (b.cited_by_count || 0) - (a.cited_by_count || 0));
+    const deduped = [], byKey = new Map();
+    allWorks.forEach(w => {
       const key = w.doi || (normTitle(w.display_name) + '|' + (w.publication_year || ''));
-      if (!seen.has(key)) { seen.add(key); deduped.push(w); }
+      const kept = byKey.get(key);
+      if (!kept) { byKey.set(key, w); deduped.push(w); }
+      else if (!isOA(kept) && isOA(w)) { kept.open_access = w.open_access; kept._link = w._link || kept._link; }
     });
-    state.results = deduped.slice(0, p.count);
+    const runId = state.runId = (state.runId || 0) + 1;
+    const shown = p.oa ? deduped.filter(isOA) : deduped;
+    const pool = (p.oa ? deduped.filter(w => !isOA(w)) : deduped.filter(w => !w._link)).filter(w => w.doi || w.display_name).slice(0, 100);
+    state.results = shown.slice(0, p.count);
     state.total = Math.max(oaResult?.total || 0, coreResult?.total || 0);
     state.fq.clear(); state.fa.clear(); state.within = ''; $('#within').value = '';
     state.sort = {key:null, dir:-1};
-    state.log = `Combined search from OpenAlex and CORE. Displayed: ${state.results.length.toLocaleString()} after deduplication${p.oa ? ' and open access filtering' : ''}.${note}`;
+    state.log = `Combined search from OpenAlex and CORE. Displayed: ${state.results.length.toLocaleString()} after deduplication${p.oa ? ' and open access filtering' : ''}. Missing links were then looked up in Unpaywall and Semantic Scholar.${note}`;
     showMsg('');
-    $('#results').hidden = false;
-    render();
+    $('#results').hidden = !state.results.length;
+    if (state.results.length) render();
+    if (pool.length) lookupFree(pool, runId, p.oa, p.count);
+    else if (!state.results.length) showMsg('No papers matched.', false);
   } finally { btn.disabled = false; btn.textContent = 'Search Both Sources'; }
+}
+const MAILTO = 'rlkprasad@gmail.com';
+async function jget(url){ try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch(e){ return null; } }
+async function findFree(w){
+  const doi = w.doi ? w.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '') : '';
+  if (doi) {
+    const u = await jget('https://api.unpaywall.org/v2/' + doi.split('/').map(encodeURIComponent).join('/') + '?email=' + MAILTO);
+    if (u && u.is_oa) {
+      const locs = [u.best_oa_location, ...(u.oa_locations || [])].filter(Boolean);
+      const hit = locs.find(l => l.url_for_pdf) || locs[0];
+      const link = hit && (hit.url_for_pdf || hit.url);
+      if (link) return { link, via: 'Unpaywall' };
+    }
+    const s = await jget('https://api.semanticscholar.org/graph/v1/paper/DOI:' + doi.split('/').map(encodeURIComponent).join('/') + '?fields=openAccessPdf');
+    if (s && s.openAccessPdf && s.openAccessPdf.url) return { link: s.openAccessPdf.url, via: 'Semantic Scholar' };
+  } else if (w.display_name) {
+    const s = await jget('https://api.semanticscholar.org/graph/v1/paper/search?limit=3&fields=title,openAccessPdf&query=' + encodeURIComponent(w.display_name));
+    const hit = s && (s.data || []).find(x => x.openAccessPdf && x.openAccessPdf.url && normTitle(x.title) === normTitle(w.display_name));
+    if (hit) return { link: hit.openAccessPdf.url, via: 'Semantic Scholar' };
+  }
+  return null;
+}
+let renderTimer = null;
+function scheduleRender(){
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(function again(){
+    if (document.querySelector('tr.abs')) { renderTimer = setTimeout(again, 1500); return; }
+    if (state.results.length) { $('#results').hidden = false; render(); }
+  }, 400);
+}
+async function lookupFree(list, runId, rescue, cap){
+  let i = 0, done = 0, found = 0; const total = list.length;
+  const tick = () => { if (runId === state.runId) showMsg(`Looking for free copies online: ${done} of ${total} checked, ${found} found…`); };
+  const worker = async () => {
+    while (i < list.length && runId === state.runId) {
+      const w = list[i++];
+      const r = await findFree(w);
+      done++;
+      if (r && runId === state.runId) {
+        w._link = r.link; w._found = r.via; w.open_access = { ...(w.open_access || {}), is_oa: true }; found++;
+        if (rescue && !state.results.includes(w) && state.results.length < cap) {
+          state.results.push(w);
+          state.results.sort((a, b) => (b.cited_by_count || 0) - (a.cited_by_count || 0));
+        }
+        scheduleRender();
+      }
+      tick();
+    }
+  };
+  tick();
+  await Promise.all(Array.from({ length: 4 }, worker));
+  if (runId !== state.runId) return;
+  if (!state.results.length) showMsg('Papers were found, but no free copy could be located online. Untick "Open access only" to see them.', false);
+  else showMsg(found ? `Found a free copy online for ${found} more paper${found > 1 ? 's' : ''}.` : '');
+  scheduleRender();
 }
 function showMsg(t, err){ const m = $('#msg'); m.textContent = t; m.className = err ? 'err' : ''; }
 
@@ -742,7 +797,7 @@ function render(){
     const auTxt = au.length > 3 ? au.slice(0,3).join(', ') + ' et al.' : au.join(', ');
     const link = w.doi || w._link || w.id;
     const src = w._source === 'CORE' ? '<span class="src core">CORE</span>' : '<span class="src openalex">OpenAlex</span>';
-    const oa = w.open_access && w.open_access.is_oa ? ' <span class="oa">open access</span>' : '';
+    const oa = w.open_access && w.open_access.is_oa ? ` <span class="oa">open access${w._found ? ' (via ' + esc(w._found) + ')' : ''}</span>` : '';
     const dlBtn = w._link ? `<button class="dl-btn" type="button" data-link="${esc(w._link)}" title="Download PDF">⬇</button>` : '';
     return `<tr>
       <td class="num">${i + 1}</td>
